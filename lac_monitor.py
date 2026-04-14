@@ -140,6 +140,8 @@ def check_sec_filings(state: dict) -> list:
         r = requests.get(url, headers=headers, timeout=15)
         r.raise_for_status()
         data = r.json()
+        log.info(f"SEC API 返回公告数: {len(data.get('filings', {}).get('recent', {}).get('form', []))}")
+        data = r.json()
     except Exception as e:
         log.error(f"SEC API 请求失败: {e}")
         return alerts
