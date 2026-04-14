@@ -191,7 +191,21 @@ def check_sec_filings(state: dict) -> list:
 
         push_level = "timeSensitive" if danger_level == "🔴" else "active"
         title_text = f"{danger_level} LAC {filing_type}"
-        body_text  = f"{date} 新文件\n{doc}{extra_info}"
+
+        # 8-K/6-K 拉原文提取摘要
+        summary_text = ""
+        if form in ("8-K", "6-K"):
+            try:
+                detail_url = f"https://data.sec.gov/Archives/edgar/data/1966983/{acc}/{doc}"
+                rx = requests.get(detail_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=10)
+                # 提取纯文本，去掉HTML标签，取前300字
+                clean = re.sub(r'<[^>]+>', ' ', rx.text)
+                clean = re.sub(r'\s+', ' ', clean).strip()
+                summary_text = "\n" + clean[:300]
+            except Exception:
+                pass
+
+        body_text = f"{date}\n{extra_info}{summary_text}".strip()
 
         alerts.append({
             "title": title_text,
