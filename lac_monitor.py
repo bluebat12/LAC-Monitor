@@ -260,8 +260,8 @@ def check_sec_filings(state: dict) -> list:
                         summary_text = "\n" + " ".join(picked)[:200]
 
             except Exception as ex:
-                log.warning(f"摘要提取失败: {ex}")
-
+                import traceback
+                log.warning(f"摘要提取失败: {ex}\n{traceback.format_exc()}")
         body_text = f"{date}{summary_text}".strip()
 
         alerts.append({
