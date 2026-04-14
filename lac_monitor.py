@@ -185,56 +185,76 @@ def check_sec_filings(state: dict) -> list:
                 danger_level = "🟡"
                 extra_info   = "\n请手动确认是否主动卖出"
 
-        elif form in ("8-K", "6-K"):
-            danger_level = "🔴"
-
-        elif form in FILING_META:
-            _, danger_level = FILING_META[form]
-
-        push_level = "timeSensitive" if danger_level == "🔴" else "active"
-        title_text = f"{danger_level} LAC {filing_type}"
-
-        # 8-K/6-K 拉原文提取摘要并翻译
         summary_text = ""
         if form in ("8-K", "6-K"):
             try:
-                # 先拉索引文件找正确文档
                 index_url = f"https://data.sec.gov/Archives/edgar/data/1966983/{acc}/index.json"
                 ix = requests.get(index_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=10)
                 files = ix.json().get("directory", {}).get("item", [])
-                
-                # 找htm文件
+
                 doc_name = ""
-                for f in files:
-                    name = f.get("name", "")
+                for fi in files:
+                    name = fi.get("name", "")
                     if name.endswith(".htm") and "index" not in name.lower():
                         doc_name = name
                         break
-                
+
                 if doc_name:
                     doc_url = f"https://www.sec.gov/Archives/edgar/data/1966983/{acc}/{doc_name}"
                     rx = requests.get(doc_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=15)
-                    # 去HTML标签，取前500字
                     clean = re.sub(r'<[^>]+>', ' ', rx.text)
                     clean = re.sub(r'\s+', ' ', clean).strip()
-                    english = clean[200:600]  # 跳过头部版权信息
-                    
-                    # 调用Claude API翻译
-                    resp = requests.post(
-                        "https://api.anthropic.com/v1/messages",
-                        headers={
-                            "x-api-key": os.environ.get("ANTHROPIC_API_KEY", ""),
-                            "anthropic-version": "2023-06-01",
-                            "content-type": "application/json",
-                        },
-                        json={
-                            "model": "claude-haiku-4-5-20251001",
-                            "max_tokens": 200,
-                            "messages": [{"role": "user", "content": f"用50字以内中文总结这段SEC公告的核心内容，不要废话：{english}"}],
-                        },
-                        timeout=20,
-                    )
-                    summary_text = "\n" + resp.json()["content"][0]["text"]
+
+                    metrics = []
+
+                    # 工人数量：approximately 700 workers / 1,800 workers
+                    m = re.search(r'approximately\s+([\d,]+)\s*(?:skilled\s+)?(?:craftspeople|workers)', clean, re.I)
+                    if m:
+                        metrics.append(f"👷 工人：{m.group(1)}")
+
+                    # DOE放款：$435 million / first drawdown
+                    m = re.search(r'\$([\d,\.]+)\s*(million|billion)\s*(?:DOE|drawdown|loan)', clean, re.I)
+                    if not m:
+                        m = re.search(r'(?:drawdown|advance)\s+of\s+\$([\d,\.]+)\s*(million|billion)', clean, re.I)
+                    if m:
+                        unit = "亿" if m.group(2).lower() == "billion" else "百万"
+                        metrics.append(f"🏦 DOE放款：${m.group(1)}{unit} / $22.3亿")
+
+                    # 工程完成度：93% complete / 80% complete
+                    m = re.search(r'([\d]+)%\s*(?:of\s+)?(?:detailed\s+)?engineering\s*(?:design\s*)?(?:complete|completed)', clean, re.I)
+                    if m:
+                        metrics.append(f"🏗️ 工程设计：{m.group(1)}%")
+
+                    # 采购完成度
+                    m = re.search(r'procurement\s+(?:is\s+)?([\d]+)%', clean, re.I)
+                    if m:
+                        metrics.append(f"📦 采购：{m.group(1)}%")
+
+                    # 现金余额
+                    m = re.search(r'cash\s+(?:and\s+)?(?:restricted\s+cash\s+)?(?:of\s+)?\$?([\d,\.]+)\s*(million|billion)', clean, re.I)
+                    if m:
+                        unit = "亿" if m.group(2).lower() == "billion" else "百万"
+                        metrics.append(f"💵 现金：${m.group(1)}{unit}")
+
+                    # Capex指引
+                    m = re.search(r'\$([\d\.]+)\s*(?:billion|B)\s*(?:to|-)\s*\$([\d\.]+)\s*(?:billion|B)\s*(?:capex|capital)', clean, re.I)
+                    if m:
+                        metrics.append(f"💰 Capex指引：${m.group(1)}B-${m.group(2)}B")
+
+                    # 机械完工目标
+                    m = re.search(r'mechanical\s+completion\s+(?:targeted?\s+for\s+)?(\w+[-\s]?\d{4})', clean, re.I)
+                    if m:
+                        metrics.append(f"🎯 完工目标：{m.group(1)}")
+
+                    if metrics:
+                        summary_text = "\n" + "\n".join(metrics)
+                    else:
+                        # 没提取到结构化数据，退回关键句
+                        KEY_TERMS = ["drawdown","loan","resign","terminat","default","construction","workforce","completion"]
+                        sentences = re.split(r'(?<=[.!?])\s+', clean)
+                        picked = [s.strip() for s in sentences if any(t.lower() in s.lower() for t in KEY_TERMS)][:2]
+                        summary_text = "\n" + " ".join(picked)[:200]
+
             except Exception as ex:
                 log.warning(f"摘要提取失败: {ex}")
 
