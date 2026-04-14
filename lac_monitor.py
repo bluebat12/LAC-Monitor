@@ -192,18 +192,15 @@ def check_sec_filings(state: dict) -> list:
         summary_text = ""
         if form in ("8-K", "6-K"):
             try:
-                # 直接用已知文件名，无需查索引
-                doc_name = doc  # doc 已经从 SEC API 拿到了
-                if doc_name and doc_name.endswith(".htm"):
-                    doc_url = f"https://www.sec.gov/Archives/edgar/data/1966983/{acc}/{doc_name}"
+                if doc and doc.endswith(".htm"):
+                    doc_url = f"https://www.sec.gov/Archives/edgar/data/1966983/{acc}/{doc}"
                     rx = requests.get(doc_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=15)
                     import html
                     clean = re.sub(r'<[^>]+>', ' ', rx.text)
                     clean = html.unescape(clean)
                     clean = re.sub(r'\s+', ' ', clean).strip()
-                    excerpt = clean[300:2000]  # 跳过头部，取正文段
+                    excerpt = clean[300:2000]
 
-                    # 调用 Gemini API 总结
                     gemini_resp = requests.post(
                         f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={os.environ.get('GEMINI_API_KEY','')}",
                         json={"contents": [{"parts": [{"text": f"用中文50字以内总结这段SEC公告的核心内容，重点提取：人员变动、资金金额、工程进度、DOE放款等关键数据，不要废话：{excerpt}"}]}]},
@@ -211,18 +208,6 @@ def check_sec_filings(state: dict) -> list:
                     )
                     if gemini_resp.status_code == 200:
                         summary_text = "\n" + gemini_resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-                    else:
-                        summary_text = ""
-
-                    if metrics:
-                        summary_text = "\n" + "\n".join(metrics)
-                    else:
-                        # 没提取到结构化数据，退回关键句
-                        KEY_TERMS = ["drawdown","loan","resign","terminat","default","construction","workforce","completion"]
-                        sentences = re.split(r'(?<=[.!?])\s+', clean)
-                        picked = [s.strip() for s in sentences if any(t.lower() in s.lower() for t in KEY_TERMS)][:2]
-                        summary_text = "\n" + " ".join(picked)[:200]
-
             except Exception as ex:
                 import traceback
                 log.warning(f"摘要提取失败: {ex}\n{traceback.format_exc()}")
