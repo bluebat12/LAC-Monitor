@@ -172,6 +172,7 @@ def check_sec_filings(state: dict) -> list:
         summary_text = ""
         title_text   = f"⚪ LAC {form}"
         body_text    = ""
+        push_level   = "active"
 
         if filing_type == "4":
             filing_type = "Form 4"
