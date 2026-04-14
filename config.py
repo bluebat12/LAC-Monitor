@@ -2,8 +2,9 @@
 # 路径：D:\finance\LAC_monitor\config.py
 
 # ─── Bark 推送（iPhone）───
-BARK_KEY = "wih4riCnMoMc6tJgRjGMLM"  # 替换为你的 Bark device key
-BARK_URL = f"https://api.day.app/{BARK_KEY}"
+import os
+BARK_KEY = os.environ.get("BARK_KEY", "")
+BARK_URL = f"{os.environ.get('BARK_SERVER', 'https://api.day.app')}/{BARK_KEY}"
 
 # ─── LAC 基本信息 ───
 LAC_CIK = "0001966983"
