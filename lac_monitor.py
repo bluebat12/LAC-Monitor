@@ -169,6 +169,9 @@ def check_sec_filings(state: dict) -> list:
         filing_type  = form
         danger_level = "⚪"
         extra_info   = ""
+        summary_text = ""
+        title_text   = f"⚪ LAC {form}"
+        body_text    = ""
 
         if filing_type == "4":
             filing_type = "Form 4"
