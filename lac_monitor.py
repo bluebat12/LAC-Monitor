@@ -194,20 +194,51 @@ def check_sec_filings(state: dict) -> list:
         push_level = "timeSensitive" if danger_level == "🔴" else "active"
         title_text = f"{danger_level} LAC {filing_type}"
 
-        # 8-K/6-K 拉原文提取摘要
+        # 8-K/6-K 拉原文提取摘要并翻译
         summary_text = ""
         if form in ("8-K", "6-K"):
             try:
-                detail_url = f"https://data.sec.gov/Archives/edgar/data/1966983/{acc}/{doc}"
-                rx = requests.get(detail_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=10)
-                # 提取纯文本，去掉HTML标签，取前300字
-                clean = re.sub(r'<[^>]+>', ' ', rx.text)
-                clean = re.sub(r'\s+', ' ', clean).strip()
-                summary_text = "\n" + clean[:300]
-            except Exception:
-                pass
+                # 先拉索引文件找正确文档
+                index_url = f"https://data.sec.gov/Archives/edgar/data/1966983/{acc}/index.json"
+                ix = requests.get(index_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=10)
+                files = ix.json().get("directory", {}).get("item", [])
+                
+                # 找htm文件
+                doc_name = ""
+                for f in files:
+                    name = f.get("name", "")
+                    if name.endswith(".htm") and "index" not in name.lower():
+                        doc_name = name
+                        break
+                
+                if doc_name:
+                    doc_url = f"https://www.sec.gov/Archives/edgar/data/1966983/{acc}/{doc_name}"
+                    rx = requests.get(doc_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=15)
+                    # 去HTML标签，取前500字
+                    clean = re.sub(r'<[^>]+>', ' ', rx.text)
+                    clean = re.sub(r'\s+', ' ', clean).strip()
+                    english = clean[200:600]  # 跳过头部版权信息
+                    
+                    # 调用Claude API翻译
+                    resp = requests.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": os.environ.get("ANTHROPIC_API_KEY", ""),
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": "claude-haiku-4-5-20251001",
+                            "max_tokens": 200,
+                            "messages": [{"role": "user", "content": f"用50字以内中文总结这段SEC公告的核心内容，不要废话：{english}"}],
+                        },
+                        timeout=20,
+                    )
+                    summary_text = "\n" + resp.json()["content"][0]["text"]
+            except Exception as ex:
+                log.warning(f"摘要提取失败: {ex}")
 
-        body_text = f"{date}\n{extra_info}{summary_text}".strip()
+        body_text = f"{date}{summary_text}\n{link}".strip()
 
         alerts.append({
             "title": title_text,
