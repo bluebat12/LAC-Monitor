@@ -201,56 +201,18 @@ def check_sec_filings(state: dict) -> list:
                     clean = re.sub(r'<[^>]+>', ' ', rx.text)
                     clean = html.unescape(clean)
                     clean = re.sub(r'\s+', ' ', clean).strip()
-                    # 跳过前面的法律声明，找到实质内容段落
-                    # 找 "pursuant to" 之后或者直接从关键词附近截取
-                    for keyword in ["hereby notify", "announces", "entered into", "received", "reported"]:
-                        idx = clean.lower().find(keyword)
-                        if idx > 0:
-                            clean = clean[max(0, idx-50):idx+500]
-                            break
+                    excerpt = clean[300:2000]  # 跳过头部，取正文段
+
+                    # 调用 Gemini API 总结
+                    gemini_resp = requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={os.environ.get('GEMINI_API_KEY','')}",
+                        json={"contents": [{"parts": [{"text": f"用中文50字以内总结这段SEC公告的核心内容，重点提取：人员变动、资金金额、工程进度、DOE放款等关键数据，不要废话：{excerpt}"}]}]},
+                        timeout=20,
+                    )
+                    if gemini_resp.status_code == 200:
+                        summary_text = "\n" + gemini_resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                     else:
-                        clean = clean[500:1000]  # 跳过头部法律文本
-
-                    metrics = []
-
-                    # 工人数量：approximately 700 workers / 1,800 workers
-                    m = re.search(r'approximately\s+([\d,]+)\s*(?:skilled\s+)?(?:craftspeople|workers)', clean, re.I)
-                    if m:
-                        metrics.append(f"👷 工人：{m.group(1)}")
-
-                    # DOE放款：$435 million / first drawdown
-                    m = re.search(r'\$([\d,\.]+)\s*(million|billion)\s*(?:DOE|drawdown|loan)', clean, re.I)
-                    if not m:
-                        m = re.search(r'(?:drawdown|advance)\s+of\s+\$([\d,\.]+)\s*(million|billion)', clean, re.I)
-                    if m:
-                        unit = "亿" if m.group(2).lower() == "billion" else "百万"
-                        metrics.append(f"🏦 DOE放款：${m.group(1)}{unit} / $22.3亿")
-
-                    # 工程完成度：93% complete / 80% complete
-                    m = re.search(r'([\d]+)%\s*(?:of\s+)?(?:detailed\s+)?engineering\s*(?:design\s*)?(?:complete|completed)', clean, re.I)
-                    if m:
-                        metrics.append(f"🏗️ 工程设计：{m.group(1)}%")
-
-                    # 采购完成度
-                    m = re.search(r'procurement\s+(?:is\s+)?([\d]+)%', clean, re.I)
-                    if m:
-                        metrics.append(f"📦 采购：{m.group(1)}%")
-
-                    # 现金余额
-                    m = re.search(r'cash\s+(?:and\s+)?(?:restricted\s+cash\s+)?(?:of\s+)?\$?([\d,\.]+)\s*(million|billion)', clean, re.I)
-                    if m:
-                        unit = "亿" if m.group(2).lower() == "billion" else "百万"
-                        metrics.append(f"💵 现金：${m.group(1)}{unit}")
-
-                    # Capex指引
-                    m = re.search(r'\$([\d\.]+)\s*(?:billion|B)\s*(?:to|-)\s*\$([\d\.]+)\s*(?:billion|B)\s*(?:capex|capital)', clean, re.I)
-                    if m:
-                        metrics.append(f"💰 Capex指引：${m.group(1)}B-${m.group(2)}B")
-
-                    # 机械完工目标
-                    m = re.search(r'mechanical\s+completion\s+(?:targeted?\s+for\s+)?(\w+[-\s]?\d{4})', clean, re.I)
-                    if m:
-                        metrics.append(f"🎯 完工目标：{m.group(1)}")
+                        summary_text = ""
 
                     if metrics:
                         summary_text = "\n" + "\n".join(metrics)
