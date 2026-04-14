@@ -192,18 +192,9 @@ def check_sec_filings(state: dict) -> list:
         summary_text = ""
         if form in ("8-K", "6-K"):
             try:
-                index_url = f"https://data.sec.gov/Archives/edgar/data/1966983/{acc}/index.json"
-                ix = requests.get(index_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=10)
-                files = ix.json().get("directory", {}).get("item", [])
-
-                doc_name = ""
-                for fi in files:
-                    name = fi.get("name", "")
-                    if name.endswith(".htm") and "index" not in name.lower():
-                        doc_name = name
-                        break
-
-                if doc_name:
+                # 直接用已知文件名，无需查索引
+                doc_name = doc  # doc 已经从 SEC API 拿到了
+                if doc_name and doc_name.endswith(".htm"):
                     doc_url = f"https://www.sec.gov/Archives/edgar/data/1966983/{acc}/{doc_name}"
                     rx = requests.get(doc_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=15)
                     clean = re.sub(r'<[^>]+>', ' ', rx.text)
