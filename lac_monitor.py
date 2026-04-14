@@ -197,8 +197,19 @@ def check_sec_filings(state: dict) -> list:
                 if doc_name and doc_name.endswith(".htm"):
                     doc_url = f"https://www.sec.gov/Archives/edgar/data/1966983/{acc}/{doc_name}"
                     rx = requests.get(doc_url, headers={"User-Agent": "LAC Monitor blueb@example.com"}, timeout=15)
+                    import html
                     clean = re.sub(r'<[^>]+>', ' ', rx.text)
+                    clean = html.unescape(clean)
                     clean = re.sub(r'\s+', ' ', clean).strip()
+                    # 跳过前面的法律声明，找到实质内容段落
+                    # 找 "pursuant to" 之后或者直接从关键词附近截取
+                    for keyword in ["hereby notify", "announces", "entered into", "received", "reported"]:
+                        idx = clean.lower().find(keyword)
+                        if idx > 0:
+                            clean = clean[max(0, idx-50):idx+500]
+                            break
+                    else:
+                        clean = clean[500:1000]  # 跳过头部法律文本
 
                     metrics = []
 
