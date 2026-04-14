@@ -206,6 +206,7 @@ def check_sec_filings(state: dict) -> list:
                         json={"contents": [{"parts": [{"text": f"用中文50字以内总结这段SEC公告的核心内容，重点提取：人员变动、资金金额、工程进度、DOE放款等关键数据，不要废话：{excerpt}"}]}]},
                         timeout=20,
                     )
+                    log.info(f"Gemini响应: {gemini_resp.status_code} | {gemini_resp.text[:200]}")
                     if gemini_resp.status_code == 200:
                         summary_text = "\n" + gemini_resp.json()["candidates"][0]["content"]["parts"][0]["text"]
             except Exception as ex:
