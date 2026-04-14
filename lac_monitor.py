@@ -1,6 +1,3 @@
-# LAC Monitor - 主监控脚本
-# 路径：D:\LAC_monitor\lac_monitor.py
-# Python 3.14  |  pip install requests feedparser
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
