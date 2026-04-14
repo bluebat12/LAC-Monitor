@@ -262,7 +262,7 @@ def check_sec_filings(state: dict) -> list:
             except Exception as ex:
                 log.warning(f"摘要提取失败: {ex}")
 
-        body_text = f"{date}{summary_text}\n{link}".strip()
+        body_text = f"{date}{summary_text}".strip()
 
         alerts.append({
             "title": title_text,
@@ -441,7 +441,7 @@ def main():
             title=alert["title"],
             body=alert["body"],
             level=alert.get("push_level", "active"),
-            url=alert.get("link", ""),
+            url="",
         )
         if alert.get("danger"):
             danger_count += 1
