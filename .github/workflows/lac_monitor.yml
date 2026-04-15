@@ -39,8 +39,6 @@ jobs:
           path: seen_filings.json
           key: lac-state-${{ runner.os }}
           
-      - name: Clear state for fresh run
-        run: rm -f seen_filings.json
 
       - name: Run monitor
         env:
