@@ -199,30 +199,60 @@ def check_sec_filings(state: dict) -> list:
                     clean = re.sub(r'<[^>]+>', ' ', rx.text)
                     clean = html.unescape(clean)
                     clean = re.sub(r'\s+', ' ', clean).strip()
-                    excerpt = clean[300:2000]
 
-                    gemini_resp = requests.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={os.environ.get('GEMINI_API_KEY','')}",
-                        json={"contents": [{"parts": [{"text": f"用中文50字以内总结这段SEC公告的核心内容，重点提取：人员变动、资金金额、工程进度、DOE放款等关键数据，不要废话：{excerpt}"}]}]},
-                        timeout=20,
-                    )
-                    log.info(f"Gemini响应: {gemini_resp.status_code} | {gemini_resp.text[:200]}")
-                    if gemini_resp.status_code == 200:
-                        summary_text = "\n" + gemini_resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    lines = []
+
+                    # 工人数量
+                    m = re.search(r'([\d,]+)\s*(?:skilled\s+)?(?:craftspeople|workers|employees)\s*(?:on.?site|on site)?', clean, re.I)
+                    if m:
+                        lines.append(f"👷 工人：{m.group(1)}")
+
+                    # DOE放款金额
+                    m = re.search(r'(?:drawdown|advance|received).{0,30}\$([\d,\.]+)\s*(million|billion)', clean, re.I)
+                    if m:
+                        unit = "亿" if "billion" in m.group(2).lower() else "百万"
+                        lines.append(f"🏦 DOE放款：${m.group(1)}{unit}")
+
+                    # 工程完成度
+                    m = re.search(r'([\d]+)%\s*(?:complete|completion)\s*(?:of\s+)?(?:detailed\s+)?engineering', clean, re.I)
+                    if not m:
+                        m = re.search(r'engineering\s+(?:design\s+)?(?:is\s+)?([\d]+)%', clean, re.I)
+                    if m:
+                        lines.append(f"🏗️ 工程：{m.group(1)}%")
+
+                    # 采购完成度
+                    m = re.search(r'procurement\s+(?:is\s+)?([\d]+)%', clean, re.I)
+                    if m:
+                        lines.append(f"📦 采购：{m.group(1)}%")
+
+                    # 现金余额
+                    m = re.search(r'(?:cash|liquidity).{0,20}\$([\d,\.]+)\s*(million|billion)', clean, re.I)
+                    if m:
+                        unit = "亿" if "billion" in m.group(2).lower() else "百万"
+                        lines.append(f"💵 现金：${m.group(1)}{unit}")
+
+                    # 人员变动
+                    m = re.search(r'(?:resign|departure|appoint).{0,60}?([A-Z][a-z]+\s+[A-Z][a-z]+)', clean, re.I)
+                    if m:
+                        lines.append(f"👤 人事：{m.group(0)[:50]}")
+
+                    # 危险词
+                    danger_hits = keyword_check(clean, FILING_DANGER_KEYWORDS)
+                    if danger_hits:
+                        lines.append(f"⚠️ 警示：{', '.join(danger_hits[:3])}")
+
+                    if lines:
+                        summary_text = "\n" + "\n".join(lines)
+                    else:
+                        # 退回：找包含关键词的句子
+                        KEY_TERMS = ["drawdown", "resign", "default", "construction", "workforce", "completion", "million", "billion"]
+                        sentences = re.split(r'(?<=[.!?])\s+', clean)
+                        picked = [s.strip() for s in sentences if any(t.lower() in s.lower() for t in KEY_TERMS)][:2]
+                        if picked:
+                            summary_text = "\n" + " ".join(picked)[:200]
+
             except Exception as ex:
-                import traceback
-                log.warning(f"摘要提取失败: {ex}\n{traceback.format_exc()}")
-        body_text = f"{date}{summary_text}".strip()
-
-        alerts.append({
-            "title": title_text,
-            "body": body_text,
-            "link": link,
-            "push_level": push_level,
-            "danger": danger_level == "🔴",
-        })
-
-        log.info(f"新公告: {filing_type} | {date} | {doc}")
+                log.warning(f"摘要提取失败: {ex}")
 
     return alerts
 
