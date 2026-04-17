@@ -26,11 +26,6 @@ jobs:
           key: lac-state-${{ runner.os }}
           restore-keys: lac-state-
 
-      - name: Run monitor
-        env:
-          BARK_KEY: ${{ secrets.BARK_KEY }}
-          BARK_SERVER: ${{ secrets.BARK_SERVER }}
-        run: python lac_monitor.py
 
       - name: Save state cache
         uses: actions/cache/save@v4
